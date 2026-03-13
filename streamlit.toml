@@ -1,2 +1,7 @@
 [server]
-python_version = "3.11"
+headless = true
+port = 8501
+enableCORS = false
+
+[global]
+pythonVersion = "3.11"
