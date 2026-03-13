@@ -5,10 +5,19 @@ import streamlit as st
 import pandas as pd
 import random
 import json
+import os
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment, Font
 
 st.set_page_config(page_title="Gerador de Grade Escolar", layout="wide")
+
+# -------------------------
+# GARANTIR QUE JSON EXISTE
+# -------------------------
+
+if not os.path.exists("professores.json"):
+    with open("professores.json", "w") as f:
+        json.dump({}, f)
 
 st.title("📚 Gerador de Grade Escolar")
 
@@ -76,13 +85,19 @@ def carregar_professores():
     try:
 
         with open("professores.json", "r") as f:
-            st.session_state.professores = json.load(f)
+            dados = json.load(f)
+
+        if isinstance(dados, dict):
+            st.session_state.professores = dados
+        else:
+            st.session_state.professores = {}
 
         st.success("Professores carregados")
 
     except:
 
-        st.warning("Nenhum arquivo encontrado")
+        st.session_state.professores = {}
+        st.warning("Arquivo vazio ou inexistente")
 
 
 # -------------------------
@@ -273,8 +288,6 @@ if st.button("Gerar grade"):
                 else:
 
                     linha.append("")
-
-               
 
             tabela.append(linha)
 
