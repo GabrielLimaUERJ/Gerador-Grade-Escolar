@@ -1,4 +1,3 @@
 streamlit==1.26.0
-pandas==2.0.3   # ou 2.1.0, se quiser arriscar
-pillow==9.4.0   # versão um pouco mais antiga que costuma compilar
-setuptools>=68.0.0
+pandas==2.0.3
+Pillow==9.5.0
