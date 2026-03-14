@@ -3,14 +3,14 @@
 Aplicação em Python que gera automaticamente horários escolares
 com base na disponibilidade dos professores.
 
-Tecnologias:
+## Tecnologias
 
 - Python
 - Streamlit
 - Pandas
 - Algoritmo heurístico de otimização
 
-Funcionalidades:
+## Funcionalidades
 
 - cadastro de professores
 - disponibilidade por horário
