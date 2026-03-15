@@ -25,7 +25,7 @@ num_tempos = st.number_input("Número de tempos por dia", min_value=1, max_value
 num_turmas = st.number_input("Número de turmas", min_value=1, max_value=10, value=3)
 
 dias = ["Seg", "Ter", "Qua", "Qui", "Sex"]
-tempos = [f"{i+1:02}" for i in range(num_tempos)]  # Gera dinamicamente os tempos
+tempos = [f"{i+1:02}" for i in range(num_tempos)]
 horarios = [f"{d}{t}" for d in dias for t in tempos]
 
 turmas = [f"Turma {i}" for i in range(1, num_turmas + 1)]
@@ -142,34 +142,38 @@ if st.button("Gerar grade"):
     melhor_grade = None
     melhor_pontuacao = -1
 
-    for tentativa in range(500):
+    for tentativa in range(1000):  # Aumentei as tentativas para maior chance de sucesso
         grade = {}
         prof_ocupado = {}
         contador_aulas = {prof: 0 for prof in professores}
+
         for turma in turmas:
             for h in horarios:
                 candidatos = []
                 for prof, info in professores.items():
                     if h in info["disponibilidade"] and (prof, h) not in prof_ocupado:
-                        # Se o professor leciona dois tempos, verifica se o próximo tempo existe
+                        # Se o professor leciona dois tempos, verifica se há tempo seguinte
                         if info["dois_tempos"]:
                             dia = h[:3]
                             tempo_num = int(h[3:])
-                            if tempo_num == num_tempos:  # Último tempo do dia, não pode colocar dois seguidos
+                            if tempo_num == num_tempos:  # Último tempo, não pode ocupar dois seguidos
                                 continue
                             prox_h = f"{dia}{tempo_num+1:02}"
                             if prox_h not in info["disponibilidade"] or (prof, prox_h) in prof_ocupado:
                                 continue
                         candidatos.append(prof)
+
                 if not candidatos:
                     continue
+
                 random.shuffle(candidatos)
                 candidatos.sort(key=lambda p: contador_aulas[p])
                 escolhido = candidatos[0]
                 grade[(turma, h)] = escolhido
                 prof_ocupado[(escolhido, h)] = True
                 contador_aulas[escolhido] += 1
-                # Se leciona dois tempos seguidos, marca o próximo também
+
+                # Se dois tempos seguidos, marca o próximo
                 if professores[escolhido]["dois_tempos"]:
                     dia = h[:3]
                     tempo_num = int(h[3:])
@@ -178,7 +182,7 @@ if st.button("Gerar grade"):
                     prof_ocupado[(escolhido, prox_h)] = True
                     contador_aulas[escolhido] += 1
 
-        # Verifica se respeita quantidade de tempos por semana
+        # Verifica quantidade de tempos por semana
         ok = True
         for prof, info in professores.items():
             if contador_aulas[prof] > info["tempos_semana"]:
@@ -194,12 +198,24 @@ if st.button("Gerar grade"):
 
     grade = melhor_grade
 
+    # Preenche horários vazios
+    for turma in turmas:
+        for h in horarios:
+            if (turma, h) not in grade:
+                grade[(turma, h)] = ""
+
     # -------------------------
     # MOSTRAR TABELAS
     # -------------------------
     tabelas = {}
     for turma in turmas:
-        tabela = [[grade.get((turma, dia+tempo), "") for dia in dias] for tempo in tempos]
+        tabela = []
+        for tempo in tempos:
+            linha = []
+            for dia in dias:
+                chave = f"{dia}{tempo}"
+                linha.append(grade.get((turma, chave), ""))
+            tabela.append(linha)
         df = pd.DataFrame(tabela, columns=dias, index=[f"Tempo {t}" for t in tempos])
         tabelas[turma] = df
         st.subheader(turma)
