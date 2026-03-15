@@ -5,7 +5,6 @@ import json
 import os
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment, Font
-from collections import Counter
 
 st.set_page_config(page_title="Gerador de Grade Escolar", layout="wide")
 
@@ -147,6 +146,7 @@ if st.button("Gerar grade"):
     professores = st.session_state.professores
     melhor_grade = None
     melhor_pontuacao = -1
+    impossiveis = {}
 
     for tentativa in range(1000):
         grade = {}
@@ -157,7 +157,10 @@ if st.button("Gerar grade"):
             for h in horarios:
                 candidatos = []
                 for prof, info in professores.items():
+                    if contador_aulas[prof] >= info["tempos_semana"]:
+                        continue
                     if h in info["disponibilidade"] and (prof, h) not in prof_ocupado:
+                        # checar dois tempos consecutivos
                         if info["dois_tempos"]:
                             dia = h[:3]
                             tempo_num = int(h[3:])
@@ -186,70 +189,71 @@ if st.button("Gerar grade"):
                     prof_ocupado[(escolhido, prox_h)] = True
                     contador_aulas[escolhido] += 1
 
-        # Verifica quantidade de tempos por semana
-        ok = True
+        # verificar professores que não completaram os tempos/semana
         for prof, info in professores.items():
-            if contador_aulas[prof] > info["tempos_semana"]:
-                ok = False
-                break
-        if not ok:
-            continue
+            if contador_aulas[prof] < info["tempos_semana"]:
+                impossiveis[prof] = info["tempos_semana"] - contador_aulas[prof]
 
         pontuacao = len(grade)
         if pontuacao > melhor_pontuacao:
             melhor_pontuacao = pontuacao
             melhor_grade = grade
 
-    # Garante grade válida
     if melhor_grade is None:
         st.warning("Não foi possível gerar uma grade completa com os professores disponíveis.")
-        grade = {}
     else:
         grade = melhor_grade
+        # preencher horários vazios
+        for turma in turmas:
+            for h in horarios:
+                if (turma, h) not in grade:
+                    grade[(turma, h)] = ""
 
-    # Preenche horários vazios
-    for turma in turmas:
-        for h in horarios:
-            if (turma, h) not in grade:
-                grade[(turma, h)] = ""
+        # -------------------------
+        # MOSTRAR TABELAS
+        # -------------------------
+        tabelas = {}
+        for turma in turmas:
+            tabela = []
+            for tempo in tempos:
+                linha = []
+                for dia in dias:
+                    chave = f"{dia}{tempo}"
+                    linha.append(grade.get((turma, chave), ""))
+                tabela.append(linha)
+            df = pd.DataFrame(tabela, columns=dias, index=[f"Tempo {t}" for t in tempos])
+            tabelas[turma] = df
+            st.subheader(turma)
+            st.table(df)
+
+        # -------------------------
+        # EXPORTAR EXCEL
+        # -------------------------
+        arquivo = "grade_horarios.xlsx"
+        with pd.ExcelWriter(arquivo, engine='openpyxl') as writer:
+            for turma, df in tabelas.items():
+                df.to_excel(writer, sheet_name=turma)
+
+        wb = load_workbook(arquivo)
+        for ws in wb.worksheets:
+            for row in ws.iter_rows():
+                for cell in row:
+                    cell.alignment = Alignment(horizontal="center", vertical="center")
+            for cell in ws[1]:
+                cell.font = Font(bold=True)
+        wb.save(arquivo)
+
+        with open(arquivo, "rb") as f:
+            st.download_button(
+                "📥 Baixar Excel",
+                f,
+                file_name="grade_horarios.xlsx"
+            )
 
     # -------------------------
-    # MOSTRAR TABELAS
+    # AVISO DE PROFESSORES IMPOSSÍVEIS
     # -------------------------
-    tabelas = {}
-    for turma in turmas:
-        tabela = []
-        for tempo in tempos:
-            linha = []
-            for dia in dias:
-                chave = f"{dia}{tempo}"
-                linha.append(grade.get((turma, chave), ""))
-            tabela.append(linha)
-        df = pd.DataFrame(tabela, columns=dias, index=[f"Tempo {t}" for t in tempos])
-        tabelas[turma] = df
-        st.subheader(turma)
-        st.table(df)
-
-    # -------------------------
-    # EXPORTAR EXCEL
-    # -------------------------
-    arquivo = "grade_horarios.xlsx"
-    with pd.ExcelWriter(arquivo, engine='openpyxl') as writer:
-        for turma, df in tabelas.items():
-            df.to_excel(writer, sheet_name=turma)
-
-    wb = load_workbook(arquivo)
-    for ws in wb.worksheets:
-        for row in ws.iter_rows():
-            for cell in row:
-                cell.alignment = Alignment(horizontal="center", vertical="center")
-        for cell in ws[1]:
-            cell.font = Font(bold=True)
-    wb.save(arquivo)
-
-    with open(arquivo, "rb") as f:
-        st.download_button(
-            "📥 Baixar Excel",
-            f,
-            file_name="grade_horarios.xlsx"
-        )
+    if impossiveis:
+        st.error("Os seguintes professores não puderam ser totalmente encaixados na grade. Ajuste a disponibilidade ou os tempos/semana:")
+        for prof, faltando in impossiveis.items():
+            st.write(f"{prof} → faltam {faltando} tempos")
