@@ -140,13 +140,14 @@ for prof, info in st.session_state.professores.items():
             st.rerun()
 
 # -------------------------
-# GERAR GRADE MULTI TURMAS COM PONTUAÇÃO PONDERADA
+# GERAR GRADE MULTI TURMAS COM BLOCO DE 2 TEMPOS EXATO
 # -------------------------
 if st.button("Gerar grade"):
     professores = st.session_state.professores
     melhor_grade = None
     melhor_pontuacao = -9999
-    impossiveis = {}
+    melhor_contador_aulas = {}
+    melhor_dois_tempos_nao = {}
 
     for tentativa in range(1000):
         grade = {}
@@ -154,42 +155,55 @@ if st.button("Gerar grade"):
         contador_aulas = {prof: 0 for prof in professores}
         dois_tempos_nao_atendidos = {prof: 0 for prof in professores}
 
-        for turma in turmas:
-            for h in horarios:
-                candidatos = []
-                for prof, info in professores.items():
-                    if contador_aulas[prof] >= info["tempos_semana"]:
-                        continue
-                    if h in info["disponibilidade"] and (prof, h) not in prof_ocupado:
+        # Distribuição equilibrada: embaralha turmas para cada tentativa
+        turmas_random = turmas.copy()
+        random.shuffle(turmas_random)
+
+        for dia in dias:
+            for idx, tempo in enumerate(tempos):
+                for turma in turmas_random:
+                    h = f"{dia}{tempo}"
+
+                    candidatos = []
+                    for prof, info in professores.items():
+                        if contador_aulas[prof] >= info["tempos_semana"]:
+                            continue
+                        if h not in info["disponibilidade"]:
+                            continue
+                        if (prof, h) in prof_ocupado:
+                            continue
+
+                        # Verifica dois tempos consecutivos
                         if info["dois_tempos"]:
-                            dia = h[:3]
-                            tempo_num = int(h[3:])
-                            if tempo_num == num_tempos:
+                            if idx + 1 >= len(tempos):
                                 dois_tempos_nao_atendidos[prof] += 1
                                 continue
-                            prox_h = f"{dia}{tempo_num+1:02}"
+                            prox_h = f"{dia}{tempos[idx+1]}"
                             if prox_h not in info["disponibilidade"] or (prof, prox_h) in prof_ocupado:
                                 dois_tempos_nao_atendidos[prof] += 1
                                 continue
+
                         candidatos.append(prof)
 
-                if not candidatos:
-                    continue
+                    if not candidatos:
+                        continue
 
-                random.shuffle(candidatos)
-                candidatos.sort(key=lambda p: contador_aulas[p])
-                escolhido = candidatos[0]
-                grade[(turma, h)] = escolhido
-                prof_ocupado[(escolhido, h)] = True
-                contador_aulas[escolhido] += 1
+                    random.shuffle(candidatos)
+                    candidatos.sort(key=lambda p: contador_aulas[p])
+                    escolhido = candidatos[0]
 
-                if professores[escolhido]["dois_tempos"]:
-                    dia = h[:3]
-                    tempo_num = int(h[3:])
-                    prox_h = f"{dia}{tempo_num+1:02}"
-                    grade[(turma, prox_h)] = escolhido
-                    prof_ocupado[(escolhido, prox_h)] = True
+                    # Aloca o professor
+                    grade[(turma, h)] = escolhido
+                    prof_ocupado[(escolhido, h)] = True
                     contador_aulas[escolhido] += 1
+
+                    # Aloca o segundo tempo consecutivo se necessário
+                    info = professores[escolhido]
+                    if info["dois_tempos"]:
+                        prox_h = f"{dia}{tempos[idx+1]}"
+                        grade[(turma, prox_h)] = escolhido
+                        prof_ocupado[(escolhido, prox_h)] = True
+                        contador_aulas[escolhido] += 1
 
         # -------------------------
         # CALCULAR PONTUAÇÃO PONDERADA
@@ -201,10 +215,10 @@ if st.button("Gerar grade"):
         uniformidade = min(turmas_preenchidas) / max(1, max(turmas_preenchidas))
 
         pontuacao = (
-            2 * total_preenchido           # Preenchimento de horários
-            - 5 * total_faltando            # Penalização aulas faltando
-            - 3 * total_dois_tempos_nao     # Penalização dois tempos consecutivos não atendidos
-            + 2 * uniformidade               # Bônus por uniformidade entre turmas
+            2 * total_preenchido
+            - 5 * total_faltando
+            - 3 * total_dois_tempos_nao
+            + 2 * uniformidade
         )
 
         if pontuacao > melhor_pontuacao:
