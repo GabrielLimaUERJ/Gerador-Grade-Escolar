@@ -18,7 +18,7 @@ if not os.path.exists("professores.json"):
 st.title("📚 Gerador de Grade Escolar")
 
 # -------------------------
-# NÚMERO DE TEMPOS E TURMAS
+# CONFIGURAÇÕES DE TEMPOS E TURMAS
 # -------------------------
 num_tempos = st.number_input("Número de tempos por dia", min_value=1, max_value=10, value=6)
 num_turmas = st.number_input("Número de turmas", min_value=1, max_value=10, value=3)
@@ -35,13 +35,11 @@ st.write("Turmas consideradas:", turmas)
 # -------------------------
 if "professores" not in st.session_state:
     st.session_state.professores = {}
-    # Carrega professores do JSON só se não tiver nada na sessão
     try:
         with open("professores.json", "r") as f:
             dados = json.load(f)
             if isinstance(dados, dict):
                 st.session_state.professores = dados
-                # atualiza professores antigos sem 'turmas'
                 for chave, info in st.session_state.professores.items():
                     if 'turmas' not in info:
                         info['turmas'] = turmas.copy()
@@ -143,13 +141,6 @@ if st.button("Adicionar professor"):
         st.warning("Preencha nome, disciplina e selecione pelo menos uma turma.")
 
 # -------------------------
-# SALVAR / CARREGAR
-# -------------------------
-col1, col2 = st.columns(2)
-col1.button("💾 Salvar professores", on_click=salvar_professores)
-col2.button("📂 Carregar professores", on_click=carregar_professores)
-
-# -------------------------
 # LISTA DE PROFESSORES
 # -------------------------
 st.subheader("Professores cadastrados")
@@ -165,7 +156,7 @@ for chave_prof, info in st.session_state.professores.items():
             st.rerun()
 
 # -------------------------
-# GERAR GRADE COM DISTRIBUIÇÃO EQUILIBRADA ENTRE TURMAS
+# GERAR GRADE
 # -------------------------
 if st.button("Gerar grade"):
     professores = st.session_state.professores
@@ -177,18 +168,20 @@ if st.button("Gerar grade"):
     for tentativa in range(1000):
         grade = {}
         prof_ocupado = {}
-        contador_aulas = {prof: 0 for prof in professores}
-        dois_tempos_nao_atendidos = {prof: 0 for prof in professores}
-        contador_por_turma = {prof: {t:0 for t in turmas} for prof in professores}
+        contador_aulas = {prof:0 for prof in professores}
+        dois_tempos_nao_atendidos = {prof:0 for prof in professores}
+        contador_por_turma = {prof:{t:0 for t in turmas} for prof in professores}
 
         for dia in dias:
             for idx, tempo in enumerate(tempos):
-                for turma in turmas:
+                # Embaralha turmas para balancear automaticamente
+                turmas_random = turmas.copy()
+                random.shuffle(turmas_random)
+                for turma in turmas_random:
                     h = f"{dia}{tempo}"
 
                     candidatos = []
                     for prof, info in professores.items():
-                        # disponibilidade total e turma
                         if contador_aulas[prof] >= info.get("tempos_semana",0):
                             continue
                         if h not in info.get("disponibilidade", []):
@@ -198,9 +191,9 @@ if st.button("Gerar grade"):
                         if turma not in info.get("turmas", []):
                             continue
 
-                        # dois tempos consecutivos
+                        # Dois tempos consecutivos
                         if info.get("dois_tempos", False):
-                            if idx + 1 >= len(tempos):
+                            if idx+1 >= len(tempos):
                                 dois_tempos_nao_atendidos[prof] += 1
                                 continue
                             prox_h = f"{dia}{tempos[idx+1]}"
@@ -213,18 +206,18 @@ if st.button("Gerar grade"):
                     if not candidatos:
                         continue
 
-                    # embaralha e ordena por quem tem menos aulas na turma
+                    # Ordena por menos aulas na turma e total
                     random.shuffle(candidatos)
                     candidatos.sort(key=lambda p: (contador_por_turma[p][turma], contador_aulas[p]))
                     escolhido = candidatos[0]
 
-                    # alocar professor
-                    grade[(turma, h)] = escolhido
-                    prof_ocupado[(escolhido, h)] = True
+                    # Aloca professor
+                    grade[(turma,h)] = escolhido
+                    prof_ocupado[(escolhido,h)] = True
                     contador_aulas[escolhido] += 1
                     contador_por_turma[escolhido][turma] += 1
 
-                    # alocar segundo tempo consecutivo
+                    # Aloca segundo tempo se necessário
                     if professores[escolhido].get("dois_tempos", False):
                         prox_h = f"{dia}{tempos[idx+1]}"
                         grade[(turma, prox_h)] = escolhido
@@ -233,20 +226,15 @@ if st.button("Gerar grade"):
                         contador_por_turma[escolhido][turma] += 1
 
         # -------------------------
-        # CALCULAR PONTUAÇÃO
+        # Pontuação
         # -------------------------
         total_preenchido = len(grade)
         total_faltando = sum(max(0, professores[p].get("tempos_semana",0) - contador_aulas[p]) for p in professores)
         total_dois_tempos_nao = sum(dois_tempos_nao_atendidos.values())
-        turmas_preenchidas = [sum(1 for h in horarios if (turma, h) in grade) for turma in turmas]
+        turmas_preenchidas = [sum(1 for h in horarios if (turma,h) in grade) for turma in turmas]
         uniformidade = min(turmas_preenchidas) / max(1, max(turmas_preenchidas))
 
-        pontuacao = (
-            2 * total_preenchido
-            - 5 * total_faltando
-            - 3 * total_dois_tempos_nao
-            + 2 * uniformidade
-        )
+        pontuacao = 2*total_preenchido - 5*total_faltando - 3*total_dois_tempos_nao + 2*uniformidade
 
         if pontuacao > melhor_pontuacao:
             melhor_pontuacao = pontuacao
@@ -258,14 +246,13 @@ if st.button("Gerar grade"):
         st.warning("Não foi possível gerar uma grade completa com os professores disponíveis.")
     else:
         grade = melhor_grade
-        # preencher horários vazios
         for turma in turmas:
             for h in horarios:
-                if (turma, h) not in grade:
-                    grade[(turma, h)] = ""
+                if (turma,h) not in grade:
+                    grade[(turma,h)] = ""
 
         # -------------------------
-        # MOSTRAR TABELAS
+        # Mostrar tabela
         # -------------------------
         tabelas = {}
         for turma in turmas:
@@ -274,7 +261,7 @@ if st.button("Gerar grade"):
                 linha = []
                 for dia in dias:
                     chave = f"{dia}{tempo}"
-                    linha.append(grade.get((turma, chave), ""))
+                    linha.append(grade.get((turma,chave), ""))
                 tabela.append(linha)
             df = pd.DataFrame(tabela, columns=dias, index=[f"Tempo {t}" for t in tempos])
             tabelas[turma] = df
@@ -282,7 +269,7 @@ if st.button("Gerar grade"):
             st.table(df)
 
         # -------------------------
-        # EXPORTAR EXCEL
+        # Exportar Excel
         # -------------------------
         arquivo = "grade_horarios.xlsx"
         with pd.ExcelWriter(arquivo, engine='openpyxl') as writer:
@@ -299,19 +286,14 @@ if st.button("Gerar grade"):
         wb.save(arquivo)
 
         with open(arquivo, "rb") as f:
-            st.download_button(
-                "📥 Baixar Excel",
-                f,
-                file_name="grade_horarios.xlsx"
-            )
+            st.download_button("📥 Baixar Excel", f, file_name="grade_horarios.xlsx")
 
     # -------------------------
-    # AVISO DE PROFESSORES IMPOSSÍVEIS
+    # Professores impossíveis
     # -------------------------
-    impossiveis = {prof: max(0, professores[prof].get("tempos_semana",0) - melhor_contador_aulas.get(prof,0))
+    impossiveis = {prof:max(0,professores[prof].get("tempos_semana",0)-melhor_contador_aulas.get(prof,0))
                    for prof in professores if melhor_contador_aulas.get(prof,0) < professores[prof].get("tempos_semana",0)}
-
     if impossiveis:
-        st.error("Os seguintes professores não puderam ser totalmente encaixados na grade. Ajuste a disponibilidade ou os tempos/semana:")
-        for prof, faltando in impossiveis.items():
+        st.error("Os seguintes professores não puderam ser totalmente encaixados na grade:")
+        for prof,faltando in impossiveis.items():
             st.write(f"{prof} → faltam {faltando} tempos")
