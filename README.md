@@ -41,5 +41,5 @@ Organizar a grade escolar de forma automática, eficiente e flexível, permitind
 1. Clone o repositório:
 
 ```bash
-git clone https://github.com/GabrielLimaUERJ/Grade-Escolar-2025.git
-cd Grade-Escolar-2025
+git clone https://github.com/GabrielLimaUERJ/Gerador-Grade-Escolar.git
+cd Gerador-Grade-Escolar
