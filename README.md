@@ -43,3 +43,5 @@ Organizar a grade escolar de forma automática, eficiente e flexível, permitind
 ```bash
 git clone https://github.com/GabrielLimaUERJ/Gerador-Grade-Escolar.git
 cd Gerador-Grade-Escolar
+pip install -r requirements.txt
+streamlit run app.py
